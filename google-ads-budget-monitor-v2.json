@@ -1,30 +1,30 @@
 {
-  "name": "P-MON · Google Ads Budget Monitor v2 — API Live",
-  "_changelog": [
-    "[v2] Remplacement du node mock Code → HTTP Request v4.2 (Google Ads API v19 live)",
-    "[v2] Ajout node Parser réponse API (micros → euros, camelCase Google Ads REST)",
-    "[v2] Config enrichie : customer_id, login_customer_id (MCC), developer_token",
-    "[v2] scheduleTrigger typeVersion 1.2 → conservé (confirmé latest 2026)",
-    "[v2] httpRequest typeVersion 4.2 (latest 2026)",
-    "[v2] Authentification : predefinedCredentialType googleAdsOAuth2Api",
-    "[v2] API Google Ads v19 (dernière version stable mai 2026)",
-    "[v2] GAQL : SELECT campaign + campaign_budget + metrics.cost_micros (TODAY)",
-    "[v2] settings enrichis : saveManualExecutions, callerPolicy",
-    "[v2] Reste (euros) arrondi 2 décimales dans analyser seuils"
-  ],
+  "name": "Google Ads · Alertes budget → Slack",
   "nodes": [
     {
+      "id": "sticky-setup",
+      "name": "📋 Guide livraison",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [200, 80],
+      "parameters": {
+        "width": 520,
+        "height": 200,
+        "content": "## Checklist client (15 min)\n\n1. **⚙️ Configuration client** → 6 champs (IDs Google Ads, canal Slack, seuil)\n2. **Credentials** → Google Ads OAuth2 + Slack Bot (`chat:write`)\n3. Slack → `/invite @votre-bot` dans le canal configuré\n4. **Test workflow** → puis **Activate**\n\n📖 Doc complète : README du repo GitHub"
+      }
+    },
+    {
       "id": "pm-trigger-001",
-      "name": "⏰ Vérification budgets",
+      "name": "⏰ Planification",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [240, 300],
+      "position": [240, 320],
       "parameters": {
         "rule": {
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 8,12,16,20 * * 1-5"
+              "expression": "0 */4 * * *"
             }
           ]
         }
@@ -32,13 +32,21 @@
     },
     {
       "id": "pm-config-001",
-      "name": "⚙️ Config",
+      "name": "⚙️ Configuration client",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [460, 300],
+      "position": [480, 320],
       "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
         "assignments": {
           "assignments": [
+            {
+              "id": "cfg-agence",
+              "name": "nom_agence",
+              "value": "Nom de l'agence",
+              "type": "string"
+            },
             {
               "id": "cfg-seuil",
               "name": "seuil_alerte_pct",
@@ -46,52 +54,44 @@
               "type": "number"
             },
             {
-              "id": "cfg-chat",
-              "name": "telegram_chat_id",
-              "value": "REMPLACER_PAR_CHAT_ID",
-              "type": "string"
-            },
-            {
-              "id": "cfg-agence",
-              "name": "nom_agence",
-              "value": "Agence SEA Demo",
+              "id": "cfg-slack",
+              "name": "slack_channel",
+              "value": "#ads-monitoring",
               "type": "string"
             },
             {
               "id": "cfg-customer",
               "name": "google_ads_customer_id",
-              "value": "REMPLACER_PAR_CUSTOMER_ID",
-              "type": "string",
-              "_note": "ID du compte client Google Ads (sans tirets, ex: 1234567890)"
+              "value": "1234567890",
+              "type": "string"
             },
             {
               "id": "cfg-mcc",
               "name": "google_ads_login_customer_id",
-              "value": "REMPLACER_PAR_MCC_ID",
-              "type": "string",
-              "_note": "ID du compte MCC (manager). Identique à customer_id si compte direct"
+              "value": "1234567890",
+              "type": "string"
             },
             {
               "id": "cfg-devtoken",
               "name": "developer_token",
-              "value": "REMPLACER_PAR_DEVELOPER_TOKEN",
-              "type": "string",
-              "_note": "Token développeur Google Ads API (Google Ads Manager → API Center)"
+              "value": "COLLER_DEVELOPER_TOKEN_ICI",
+              "type": "string"
             }
           ]
         },
         "options": {}
-      }
+      },
+      "notes": "google_ads_customer_id : ID compte Ads sans tirets.\ngoogle_ads_login_customer_id : ID MCC (ou identique si pas de MCC).\nslack_channel : #canal ou ID canal (C0123...)."
     },
     {
       "id": "pm-gads-001",
-      "name": "📡 Google Ads API — Budgets du jour",
+      "name": "📡 Google Ads — dépenses du jour",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [680, 300],
+      "position": [720, 320],
       "parameters": {
         "method": "POST",
-        "url": "={{ 'https://googleads.googleapis.com/v19/customers/' + $json.google_ads_customer_id + '/googleAds:search' }}",
+        "url": "={{ 'https://googleads.googleapis.com/v19/customers/' + $('⚙️ Configuration client').item.json.google_ads_customer_id + '/googleAds:search' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleAdsOAuth2Api",
         "sendHeaders": true,
@@ -99,64 +99,60 @@
           "parameters": [
             {
               "name": "developer-token",
-              "value": "={{ $json.developer_token }}"
+              "value": "={{ $('⚙️ Configuration client').item.json.developer_token }}"
             },
             {
               "name": "login-customer-id",
-              "value": "={{ $json.google_ads_login_customer_id }}"
+              "value": "={{ $('⚙️ Configuration client').item.json.google_ads_login_customer_id }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{ \"query\": \"SELECT campaign.name, campaign.id, campaign_budget.amount_micros, metrics.cost_micros, customer.descriptive_name FROM campaign WHERE campaign.status = 'ENABLED' AND segments.date DURING TODAY ORDER BY metrics.cost_micros DESC\" }",
+        "jsonBody": "={\"query\": \"SELECT campaign.name, campaign.id, campaign_budget.amount_micros, metrics.cost_micros, customer.descriptive_name FROM campaign WHERE campaign.status = 'ENABLED' AND segments.date DURING TODAY AND campaign_budget.amount_micros > 0 ORDER BY metrics.cost_micros DESC\"}",
         "options": {
           "response": {
             "response": {
-              "fullResponse": false
+              "fullResponse": false,
+              "neverError": true
             }
           }
         }
       },
       "credentials": {
         "googleAdsOAuth2Api": {
-          "id": "REMPLACER_ID_GADS_CREDENTIAL",
-          "name": "Google Ads OAuth2"
+          "name": "Google Ads — OAuth2 (client)"
         }
       },
-      "_setup": {
-        "etape_1": "Dans n8n → Credentials → New → Google Ads OAuth2 API",
-        "etape_2": "Créer un projet GCP → activer Google Ads API → OAuth2 credentials",
-        "etape_3": "Developer Token : Google Ads Manager → Outils → API Center",
-        "etape_4": "customer_id : Google Ads → coin supérieur droit (format: 123-456-7890 → enlever tirets)"
-      }
+      "onError": "continueRegularOutput",
+      "notes": "Credential : Google Ads OAuth2 API (GCP + token développeur)."
     },
     {
       "id": "pm-parse-001",
-      "name": "🔄 Parser réponse API",
+      "name": "🔄 Normaliser données",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 300],
+      "position": [960, 320],
       "parameters": {
-        "jsCode": "// Google Ads API v19 REST — réponse en camelCase, montants en micros\n// 1 micro = 0,000001 euro → diviser par 1_000_000\nconst results = $input.first().json.results || [];\n\nif (results.length === 0) {\n  return [{ json: { campagnes: [] } }];\n}\n\nconst campagnes = results.map(r => ({\n  campagne: r.campaign?.name ?? 'N/A',\n  client:   r.customer?.descriptiveName ?? 'N/A',\n  budget:   Math.round((parseInt(r.campaignBudget?.amountMicros ?? '0') / 1_000_000) * 100) / 100,\n  depense:  Math.round((parseInt(r.metrics?.costMicros ?? '0')        / 1_000_000) * 100) / 100,\n  compte:   'Compte #' + (r.campaign?.id ?? 'N/A')\n}));\n\nreturn [{ json: { campagnes } }];"
+        "jsCode": "const raw = $input.first().json;\nconst config = $('⚙️ Configuration client').item.json;\n\n// Erreur API (auth, token, query…)\nif (raw.error) {\n  const detail = raw.error?.message || raw.error?.details?.[0]?.message || JSON.stringify(raw.error);\n  return [{\n    json: {\n      campagnes: [],\n      erreur_api: detail,\n      nom_agence: config.nom_agence\n    }\n  }];\n}\n\nconst results = raw.results || [];\nconst campagnes = results.map(r => ({\n  campagne: r.campaign?.name ?? 'N/A',\n  client: r.customer?.descriptiveName ?? config.nom_agence,\n  budget: Math.round((parseInt(r.campaignBudget?.amountMicros ?? '0', 10) / 1_000_000) * 100) / 100,\n  depense: Math.round((parseInt(r.metrics?.costMicros ?? '0', 10) / 1_000_000) * 100) / 100,\n  compte: String(r.campaign?.id ?? 'N/A')\n})).filter(c => c.budget > 0);\n\nreturn [{ json: { campagnes, erreur_api: null } }];"
       }
     },
     {
       "id": "pm-analyse-001",
-      "name": "🔍 Analyser seuils",
+      "name": "🔍 Détecter dépassements",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 300],
+      "position": [1200, 320],
       "parameters": {
-        "jsCode": "const seuil = $('⚙️ Config').item.json.seuil_alerte_pct;\nconst campagnes = $input.item.json.campagnes;\nconst heure = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });\nconst date  = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });\nconst heureActuelle = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' })).getHours();\n\nfunction genererRecommandation(c, hActuelle) {\n  const burnRate = hActuelle > 0 ? c.depense / hActuelle : c.depense / 20;\n  const heuresRestantes = burnRate > 0 ? c.reste / burnRate : 99;\n  const heureEpuisement = hActuelle + heuresRestantes;\n  if (c.pct >= 95) return 'Pause immédiate recommandée — budget quasi épuisé.';\n  if (heureEpuisement <= 24) {\n    const h = Math.floor(heureEpuisement);\n    const m = Math.round((heureEpuisement - h) * 60);\n    return `Budget épuisé estimé à ${h}h${m > 9 ? m : '0' + m}. Action : réduire enchères -20% ou pauser.`;\n  }\n  return 'Surveiller — rythme actuel OK mais à surveiller en fin de journée.';\n}\n\nconst alertes = campagnes\n  .map(c => ({\n    ...c,\n    pct:  Math.round((c.depense / c.budget) * 100),\n    reste: Math.round((c.budget - c.depense) * 100) / 100\n  }))\n  .map(c => ({ ...c, recommandation: genererRecommandation(c, heureActuelle) }))\n  .filter(c => c.pct >= seuil)\n  .sort((a, b) => b.pct - a.pct);\n\nreturn [{ json: { alertes, total: alertes.length, heure, date, seuil } }];"
+        "jsCode": "const config = $('⚙️ Configuration client').item.json;\nconst seuil = config.seuil_alerte_pct;\nconst { campagnes, erreur_api } = $input.item.json;\n\nconst tz = 'Europe/Paris';\nconst heure = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: tz });\nconst date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });\nconst heureActuelle = new Date(new Date().toLocaleString('en-US', { timeZone: tz })).getHours();\n\nif (erreur_api) {\n  return [{\n    json: {\n      alertes: [],\n      total: 0,\n      heure,\n      date,\n      seuil,\n      erreur_api,\n      message_erreur: `⚠️ *Erreur Google Ads API*\\n${erreur_api}\\n_Vérifiez OAuth2, developer token et customer ID._`\n    }\n  }];\n}\n\nfunction recommandation(c, h) {\n  if (c.pct >= 95) return '🔴 Action : pauser ou réduire les enchères de 20 % immédiatement.';\n  const burn = h > 0 ? c.depense / h : c.depense / 12;\n  const heuresRestantes = burn > 0 ? c.reste / burn : 99;\n  const fin = h + heuresRestantes;\n  if (fin <= 22) {\n    const hf = Math.floor(fin);\n    const mf = Math.round((fin - hf) * 60);\n    return `🟠 Budget estimé épuisé vers ${hf}h${String(mf).padStart(2, '0')}. Réduire enchères ou surveiller de près.`;\n  }\n  return '🟡 Rythme élevé — à surveiller en fin de journée.';\n}\n\nconst alertes = campagnes\n  .map(c => ({\n    ...c,\n    pct: Math.min(999, Math.round((c.depense / c.budget) * 100)),\n    reste: Math.round((c.budget - c.depense) * 100) / 100\n  }))\n  .map(c => ({ ...c, recommandation: recommandation(c, heureActuelle) }))\n  .filter(c => c.pct >= seuil)\n  .sort((a, b) => b.pct - a.pct);\n\nreturn [{ json: { alertes, total: alertes.length, heure, date, seuil, erreur_api: null, message_erreur: null } }];"
       }
     },
     {
       "id": "pm-if-001",
-      "name": "🚨 Des alertes ?",
+      "name": "🚨 Envoyer une alerte ?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1340, 300],
+      "position": [1440, 320],
       "parameters": {
         "conditions": {
           "options": {
@@ -171,69 +167,83 @@
               "leftValue": "={{ $json.total }}",
               "rightValue": 0,
               "operator": { "type": "number", "operation": "gt" }
+            },
+            {
+              "id": "has-api-error",
+              "leftValue": "={{ $json.erreur_api }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
             }
           ],
-          "combinator": "and"
+          "combinator": "or"
         },
         "options": {}
       }
     },
     {
       "id": "pm-format-001",
-      "name": "📝 Formater message Telegram",
+      "name": "📝 Composer message Slack",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 180],
+      "position": [1680, 240],
       "parameters": {
-        "jsCode": "const { alertes, heure, date, seuil } = $input.item.json;\nconst agence = $('⚙️ Config').item.json.nom_agence;\n\nconst lignes = alertes.map(a => {\n  const emoji = a.pct >= 95 ? '🔴' : a.pct >= 85 ? '🟠' : '🟡';\n  return [\n    `${emoji} *${a.campagne}* — ${a.client}`,\n    `Budget : ${a.budget}€  ·  Dépensé : *${a.depense}€*  ·  *${a.pct}%* utilisé  ·  Reste : ${a.reste}€`,\n    `_${a.compte}_`,\n    `💡 ${a.recommandation}`,\n    `─────────────────────`\n  ].join('\\n');\n}).join('\\n\\n');\n\nconst message = [\n  `🚨 *ALERTE BUDGET GOOGLE ADS*`,\n  `📅 ${date} à ${heure}`,\n  `🏢 ${agence}  ·  Seuil : ${seuil}%`,\n  `─────────────────────`,\n  '',\n  lignes,\n  '',\n  `⚡ *${alertes.length} campagne(s) à risque*`,\n  `Vérifiez vos budgets avant épuisement total.`\n].join('\\n');\n\nreturn [{ json: { message, nb_alertes: alertes.length } }];"
+        "jsCode": "const data = $input.item.json;\nconst config = $('⚙️ Configuration client').item.json;\n\nif (data.message_erreur) {\n  return [{ json: { message: data.message_erreur, nb_alertes: 0, type: 'erreur' } }];\n}\n\nconst { alertes, heure, date, seuil } = data;\nconst agence = config.nom_agence;\n\n// Résumé IA global\nconst budgetExpose = alertes.reduce((sum, a) => sum + a.reste, 0).toFixed(0);\nconst prioritaire = alertes[0]; // déjà trié par pct desc\nconst actionPrioritaire = prioritaire.pct >= 95\n  ? `pauser *${prioritaire.campagne}* (${prioritaire.pct}%) immédiatement`\n  : `surveiller *${prioritaire.campagne}* (${prioritaire.pct}%) en priorité`;\nconst resume = `📊 *${alertes.length} campagne(s) à risque* · Budget exposé : *${budgetExpose} €* · Action prioritaire : ${actionPrioritaire}`;\n\nconst blocs = alertes.map(a => {\n  const niveau = a.pct >= 95 ? '🔴 CRITIQUE' : a.pct >= 85 ? '🟠 ATTENTION' : '🟡 SURVEILLANCE';\n  return [\n    `*${niveau}* · ${a.campagne}`,\n    `Client : ${a.client} · Compte ${a.compte}`,\n    `Budget ${a.budget} € · Dépensé *${a.depense} €* (*${a.pct}%*) · Reste ${a.reste} €`,\n    `→ ${a.recommandation}`\n  ].join('\\n');\n}).join('\\n\\n');\n\nconst message = [\n  '🚨 *ALERTE BUDGET GOOGLE ADS*',\n  `📅 ${date} · ${heure} (Paris)`,\n  `🏢 ${agence} · Seuil ${seuil}%`,\n  '────────────────────',\n  resume,\n  '────────────────────',\n  '',\n  blocs,\n  '',\n  `⚡ *${alertes.length} campagne(s)* au-dessus du seuil`,\n  '_Workflow P-MON · données du jour (API Google Ads)_'\n].join('\\n');\n\nreturn [{ json: { message, nb_alertes: alertes.length, type: 'alerte' } }];"
       }
     },
     {
-      "id": "pm-telegram-001",
-      "name": "📣 Alerte Telegram",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [1780, 180],
+      "id": "pm-slack-001",
+      "name": "💬 Publier sur Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1920, 240],
       "parameters": {
-        "chatId": "={{ $('⚙️ Config').item.json.telegram_chat_id }}",
+        "resource": "message",
+        "operation": "post",
+        "channel": "={{ $('⚙️ Configuration client').item.json.slack_channel }}",
         "text": "={{ $json.message }}",
-        "additionalFields": {
-          "parse_mode": "Markdown"
+        "otherOptions": {
+          "mrkdwn": true
         }
       },
       "credentials": {
-        "telegramApi": {
-          "id": "REMPLACER_ID_TELEGRAM_CREDENTIAL",
-          "name": "Telegram Bot"
+        "slackApi": {
+          "name": "Slack — Bot alertes (client)"
         }
-      }
+      },
+      "notes": "Inviter le bot : /invite @nom-bot dans le canal."
     },
     {
       "id": "pm-ok-001",
-      "name": "✅ Aucune alerte",
+      "name": "✅ RAS — rien à signaler",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1560, 420],
+      "position": [1680, 420],
       "parameters": {
         "assignments": {
           "assignments": [
             {
               "id": "log-ok",
               "name": "statut",
-              "value": "OK — tous les budgets sous le seuil",
+              "value": "OK — aucune campagne au-dessus du seuil",
               "type": "string"
             },
             {
               "id": "log-ts",
-              "name": "timestamp",
+              "name": "verifie_a",
               "value": "={{ $now.toISO() }}",
               "type": "string"
             },
             {
               "id": "log-seuil",
               "name": "seuil_pct",
-              "value": "={{ $('⚙️ Config').item.json.seuil_alerte_pct }}",
-              "type": "string"
+              "value": "={{ $('⚙️ Configuration client').item.json.seuil_alerte_pct }}",
+              "type": "number"
+            },
+            {
+              "id": "log-count",
+              "name": "campagnes_analysees",
+              "value": "={{ $('🔄 Normaliser données').item.json.campagnes?.length ?? 0 }}",
+              "type": "number"
             }
           ]
         },
@@ -242,29 +252,29 @@
     }
   ],
   "connections": {
-    "⏰ Vérification budgets": {
-      "main": [[{ "node": "⚙️ Config", "type": "main", "index": 0 }]]
+    "⏰ Planification": {
+      "main": [[{ "node": "⚙️ Configuration client", "type": "main", "index": 0 }]]
     },
-    "⚙️ Config": {
-      "main": [[{ "node": "📡 Google Ads API — Budgets du jour", "type": "main", "index": 0 }]]
+    "⚙️ Configuration client": {
+      "main": [[{ "node": "📡 Google Ads — dépenses du jour", "type": "main", "index": 0 }]]
     },
-    "📡 Google Ads API — Budgets du jour": {
-      "main": [[{ "node": "🔄 Parser réponse API", "type": "main", "index": 0 }]]
+    "📡 Google Ads — dépenses du jour": {
+      "main": [[{ "node": "🔄 Normaliser données", "type": "main", "index": 0 }]]
     },
-    "🔄 Parser réponse API": {
-      "main": [[{ "node": "🔍 Analyser seuils", "type": "main", "index": 0 }]]
+    "🔄 Normaliser données": {
+      "main": [[{ "node": "🔍 Détecter dépassements", "type": "main", "index": 0 }]]
     },
-    "🔍 Analyser seuils": {
-      "main": [[{ "node": "🚨 Des alertes ?", "type": "main", "index": 0 }]]
+    "🔍 Détecter dépassements": {
+      "main": [[{ "node": "🚨 Envoyer une alerte ?", "type": "main", "index": 0 }]]
     },
-    "🚨 Des alertes ?": {
+    "🚨 Envoyer une alerte ?": {
       "main": [
-        [{ "node": "📝 Formater message Telegram", "type": "main", "index": 0 }],
-        [{ "node": "✅ Aucune alerte", "type": "main", "index": 0 }]
+        [{ "node": "📝 Composer message Slack", "type": "main", "index": 0 }],
+        [{ "node": "✅ RAS — rien à signaler", "type": "main", "index": 0 }]
       ]
     },
-    "📝 Formater message Telegram": {
-      "main": [[{ "node": "📣 Alerte Telegram", "type": "main", "index": 0 }]]
+    "📝 Composer message Slack": {
+      "main": [[{ "node": "💬 Publier sur Slack", "type": "main", "index": 0 }]]
     }
   },
   "active": false,
@@ -272,10 +282,13 @@
     "executionOrder": "v1",
     "timezone": "Europe/Paris",
     "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
     "callerPolicy": "workflowsFromSameOwner"
   },
   "meta": {
-    "instanceId": "bos-sedera",
-    "templateCredsSetupCompleted": false
+    "templateVersion": "2.2.0",
+    "templateCredsSetupCompleted": false,
+    "description": "Surveillance budgets Google Ads → alertes Slack. Livraison agence SEA."
   }
 }
