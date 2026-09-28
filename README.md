@@ -1,6 +1,5 @@
 # Google Ads · Alertes budget → Slack
 
-> Vision démo vs prod (tous les workflows) : [`../VISION-CLIENT-COMPLETE.md`](../VISION-CLIENT-COMPLETE.md)  
 > **IA** : aucune (démo et prod) — règles + seuils uniquement.
 
 Workflow n8n **prêt à livrer** pour agences SEA : surveille les budgets Google Ads en temps réel et publie les alertes dans un canal **Slack** — là où l’équipe media travaille déjà.
