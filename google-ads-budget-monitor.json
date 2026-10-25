@@ -25,7 +25,7 @@
         "assignments": {
           "assignments": [
             { "id": "cfg-seuil", "name": "seuil_alerte_pct", "value": 80, "type": "number" },
-            { "id": "cfg-chat", "name": "telegram_chat_id", "value": "REMPLACER_PAR_CHAT_ID", "type": "string" },
+            { "id": "cfg-chat", "name": "telegram_chat_id", "value": "<YOUR_TELEGRAM_CHAT_ID>", "type": "string" },
             { "id": "cfg-agence", "name": "nom_agence", "value": "Agence SEA Demo", "type": "string" }
           ]
         },
@@ -98,7 +98,7 @@
         }
       },
       "credentials": {
-        "telegramApi": { "id": "REMPLACER_ID_TELEGRAM_CREDENTIAL", "name": "Telegram Bot" }
+        "telegramApi": { "id": "<YOUR_TELEGRAM_CREDENTIAL_ID>", "name": "Telegram Bot" }
       }
     },
     {
@@ -144,5 +144,5 @@
   },
   "active": false,
   "settings": { "executionOrder": "v1", "timezone": "Europe/Paris" },
-  "meta": { "instanceId": "bos-sedera" }
+  "meta": {}
 }
